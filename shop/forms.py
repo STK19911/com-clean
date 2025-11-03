@@ -4,8 +4,8 @@ from django.contrib.auth.models import User
 from .models import Order
 from django.core.exceptions import ValidationError
 import re
-from .models import Order, ProductReview # Assurez-vous que ProductReview est bien importé
-
+from .models import Vendor
+from .models import Order, ProductReview, Product, Category, Vendor
 class CartAddProductForm(forms.Form):
     """
     Formulaire pour ajouter des produits au panier
@@ -115,52 +115,41 @@ class CustomUserCreationForm(UserCreationForm):
     def clean_email(self):
         email = self.cleaned_data.get('email')
         if User.objects.filter(email=email).exists():
-            raise ValidationError("Un compte avec cet email existe déjà.")
+            raise ValidationError("Cet email est déjà utilisé.")
         return email
 
     def clean_phone_number(self):
-        phone_number = self.cleaned_data.get('phone_number')
-        # Validation basique du numéro de téléphone
-        if not re.match(r'^[\+]?[0-9\s\-\(\)]{10,15}$', phone_number):
-            raise ValidationError("Veuillez entrer un numéro de téléphone valide.")
-        return phone_number
+        phone = self.cleaned_data.get('phone_number')
+        # Format international simple
+        if not re.match(r'^\+?[\d\s-]{10,15}$', phone):
+            raise ValidationError("Numéro de téléphone invalide. Ex: +33 6 12 34 56 78")
+        return phone
 
-    def save(self, commit=True):
-        user = super().save(commit=False)
-        user.username = self.cleaned_data['email']  # Utiliser l'email comme username
-        user.email = self.cleaned_data['email']
-        user.first_name = self.cleaned_data['first_name']
-        user.last_name = self.cleaned_data['last_name']
-    
-        if commit:
-            user.save()
-        # Créer le profil utilisateur avec TOUTES les données
-        from .models import UserProfile
-        UserProfile.objects.create(
-            user=user,
-            birth_date=self.cleaned_data['birth_date'],
-            phone_number=self.cleaned_data['phone_number'],
-            email_confirmed=False
-        )
-        return user
+    def clean_birth_date(self):
+        birth_date = self.cleaned_data.get('birth_date')
+        from datetime import date
+        age = (date.today() - birth_date).days / 365.25
+        if age < 18:
+            raise ValidationError("Vous devez avoir au moins 18 ans.")
+        return birth_date
 
-# ✅ NOUVEAU FORMULAIRE POUR LES AVIS
 class ProductReviewForm(forms.ModelForm):
-    """Formulaire pour les avis produits avec filtres automatiques"""
-    
     class Meta:
         model = ProductReview
         fields = ['rating', 'title', 'comment']
         widgets = {
-            'rating': forms.RadioSelect(choices=[(i, f'{i} étoile(s)') for i in range(1, 6)]),
+            'rating': forms.Select(
+                choices=[(i, f"{i} étoiles") for i in range(1, 6)],
+                attrs={'class': 'form-select'}
+            ),
             'title': forms.TextInput(attrs={
                 'class': 'form-control',
-                'placeholder': 'Titre de votre avis'
+                'placeholder': 'Titre de votre avis (ex: Excellent produit)'
             }),
             'comment': forms.Textarea(attrs={
                 'class': 'form-control',
-                'placeholder': 'Décrivez votre expérience avec ce produit...',
-                'rows': 4
+                'rows': 4,
+                'placeholder': 'Détaillez votre expérience...'
             }),
         }
         labels = {
@@ -170,15 +159,35 @@ class ProductReviewForm(forms.ModelForm):
         }
     
     def __init__(self, *args, **kwargs):
-        self.user = kwargs.pop('user', None)  # ✅ Récupère l'utilisateur
+        self.user = kwargs.pop('user', None)
         super().__init__(*args, **kwargs)
     
     def clean_title(self):
         """Filtre pour le titre"""
         title = self.cleaned_data.get('title')
         
-        # Liste de mots inappropriés
-        inappropriate_words = ['spam', 'arnaque', 'escroc', 'merde', 'con', 'connard', 'pute', 'salope']
+        # Liste de mots inappropriés (élargie)
+        inappropriate_words = [
+            # Mots existants (Nettoyage de base)
+            'spam', 'arnaque', 'escroc', 
+            
+            # Insultes/Vulgarité
+            'merde', 'con', 'connard', 'pute', 'salope', 'putain', 
+            'enculé', 'bâtard', 'abruti', 'idiot', 'débile', 'chienne', 
+            'foutre', 'bordel',
+            
+            # Contenu sexuel/Nudité
+            'nue', 'nude', 'sexe', 'viol', 'porn', 'porno', 'masturb', 'sodom', 'gode', 'bite', 'chatte', 'queue',
+            
+            # Violence/Haine/Menaces
+            'violent', 'meutre', 'tuer', 'massacre', 'raciste', 'nazi', 'terror', 'haineux', 'frapper', 'suicide',
+            
+            # Substances illicites
+            'drogue', 'coke', 'héroïne', 'crack', 'toxico',
+            
+            # Termes Financiers Trompeurs
+            'gratuit', 'remboursement immédiat', 'sans risque', 'facile', 'rapide', # À utiliser avec prudence selon le contexte
+        ]
         
         # Vérifier la longueur
         if len(title) < 5:
@@ -277,3 +286,37 @@ class CouponApplyForm(forms.Form):
         """Normalise le code promo en majuscules et sans espaces inutiles"""
         code = self.cleaned_data.get('code').upper().strip()
         return code
+
+# --- AJOUT : FORMULAIRE POUR AJOUTER/MODIFIER PRODUITS PAR VENDEURS ---
+class VendorProductForm(forms.ModelForm):
+    class Meta:
+        model = Product
+        fields = ['category', 'name', 'slug', 'description', 'price', 'image', 'stock', 'available']
+        widgets = {
+            'category': forms.Select(attrs={'class': 'form-control'}),
+            'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Nom du produit'}),
+            'slug': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Auto-généré si vide'}),
+            'description': forms.Textarea(attrs={'class': 'form-control', 'rows': 5}),
+            'price': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'image': forms.ClearableFileInput(attrs={'class': 'form-control'}),
+            'stock': forms.NumberInput(attrs={'class': 'form-control'}),
+            'available': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+        }
+
+# --- OPTIONNEL : FORMULAIRE D'INSCRIPTION VENDEUR ---
+class VendorRegistrationForm(forms.ModelForm):
+    class Meta:
+        model = Vendor
+        fields = ['shop_name', 'description', 'logo', 'banner', 'phone', 'website', 'instagram', 'address', 'city', 'country']
+        widgets = {
+            'shop_name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Nom de votre boutique'}),
+            'description': forms.Textarea(attrs={'class': 'form-control', 'rows': 4}),
+            'logo': forms.ClearableFileInput(attrs={'class': 'form-control'}),
+            'banner': forms.ClearableFileInput(attrs={'class': 'form-control'}),
+            'phone': forms.TextInput(attrs={'class': 'form-control'}),
+            'website': forms.URLInput(attrs={'class': 'form-control'}),
+            'instagram': forms.TextInput(attrs={'class': 'form-control'}),
+            'address': forms.TextInput(attrs={'class': 'form-control'}),
+            'city': forms.TextInput(attrs={'class': 'form-control'}),
+            'country': forms.Select(attrs={'class': 'form-control'}, choices=[('France', 'France')]),  # Ajoute plus si besoin
+        }

@@ -1,0 +1,18 @@
+{% extends 'base.html' %}  <!-- ← Changé ici : 'base.html' au lieu de 'shop/base.html' -->
+{% block title %}Éditer {{ product.name }} - {{ shop.shop_name|default:"Ma Boutique" }}{% endblock %}
+
+{% block content %}
+<div class="container pt-5 mt-5">
+  <div class="row justify-content-center">
+    <div class="col-lg-10">
+      <div class="text-center mb-5">
+        <h2 class="text-gold">
+          <i class="fas fa-edit me-3"></i>Éditer : {{ product.name }}
+        </h2>
+        <p class="text-muted">Affinez les détails de cette pièce exceptionnelle.</p>
+      </div>
+      {% include 'shop/vendor/add_product.html' with form=form shop=product.vendor %}
+    </div>
+  </div>
+</div>
+{% endblock %}

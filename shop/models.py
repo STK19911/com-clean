@@ -4,7 +4,8 @@ from django.contrib.auth.models import User
 from django.urls import reverse
 import uuid
 from django.core.validators import MinValueValidator, MaxValueValidator
-from django.utils import timezone  # ⭐ Import pour les dates de coupon
+from django.utils import timezone
+from django.utils.text import slugify
 
 class Category(models.Model):
     name = models.CharField(max_length=100)
@@ -28,6 +29,7 @@ class Product(models.Model):
     available = models.BooleanField(default=True)
     created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
+    vendor = models.ForeignKey('Vendor', on_delete=models.CASCADE, related_name='products', null=True, blank=True)
     
     class Meta:
         ordering = ['-created']
@@ -46,32 +48,24 @@ class Product(models.Model):
         return self.stock > 0 and self.available
     
     def average_rating(self):
-        """Calcule la note moyenne du produit"""
         reviews = self.reviews.filter(approved=True)
         if reviews.count() > 0:
             return round(sum(review.rating for review in reviews) / reviews.count(), 1)
         return 0
     
     def review_count(self):
-        """Retourne le nombre d'avis approuvés"""
         return self.reviews.filter(approved=True).count()
     
     def has_user_ordered(self, user):
-        """Vérifie si l'utilisateur a déjà commandé ce produit"""
         if not user.is_authenticated:
             return False
-        # Assurez-vous que OrderItem existe (il est défini plus tard)
-        # Nécessite un import local si OrderItem n'est pas encore défini
         from .models import OrderItem 
         return OrderItem.objects.filter(
             order__user=user,
             product=self
         ).exists()
 
-# --- NOUVEAU MODÈLE POUR LES COUPONS ---
 class Coupon(models.Model):
-    """Modèle pour les codes promo"""
-    
     CODE_TYPES = [
         ('percentage', 'Pourcentage'),
         ('fixed', 'Montant fixe'),
@@ -101,169 +95,91 @@ class Coupon(models.Model):
     )
     used_count = models.PositiveIntegerField(default=0)
     active = models.BooleanField(default=True)
-    single_use_per_user = models.BooleanField(
-        default=False,
-        help_text="Une seule utilisation par utilisateur"
-    )
-    # Assurez-vous que les modèles Category et Product sont définis (ils le sont)
-    categories = models.ManyToManyField(
-        'Category', 
-        blank=True,
-        help_text="Catégories applicables (vide = toutes)"
-    )
-    products = models.ManyToManyField(
-        'Product',
-        blank=True,
-        help_text="Produits applicables (vide = tous)"
-    )
-    
+    single_use_per_user = models.BooleanField(default=False, help_text="Limité à une utilisation par utilisateur")
+    categories = models.ManyToManyField(Category, blank=True, help_text="Catégories spécifiques")
+    products = models.ManyToManyField(Product, blank=True, help_text="Produits spécifiques")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
     class Meta:
-        verbose_name = "Code promo"
-        verbose_name_plural = "Codes promo"
         ordering = ['-created_at']
     
     def __str__(self):
-        return f"{self.code} - {self.get_discount_type_display()} {self.discount_value}"
+        return self.code
     
     def is_valid(self, user=None, cart=None):
-        """Vérifie si le code promo est valide"""
         now = timezone.now()
-        
-        # Vérifications de base
-        if not self.active:
-            return False, "Ce code promo n'est plus actif."
-        
-        if now < self.valid_from:
-            return False, "Ce code promo n'est pas encore valide."
-        
-        if now > self.valid_to:
-            return False, "Ce code promo a expiré."
-        
+        if not self.active or now < self.valid_from or now > self.valid_to:
+            return False, "Ce code promo n'est pas valide actuellement."
         if self.max_usage > 0 and self.used_count >= self.max_usage:
             return False, "Ce code promo a atteint sa limite d'utilisation."
-        
-        # Vérification utilisateur spécifique
-        if user and user.is_authenticated and self.single_use_per_user:
-            # Importez Order ici pour éviter les problèmes de dépendance circulaire
-            from .models import Order 
-            if Order.objects.filter(user=user, coupon=self).exists():
-                return False, "Vous avez déjà utilisé ce code promo."
-        
-        # Vérification panier
-        if cart:
-            total_price = cart.get_total_price()
-            
-            if total_price < self.minimum_amount:
-                return False, f"Montant minimum requis : {self.minimum_amount} €"
-            
-            # Vérifier les catégories/produits applicables
-            if not self._is_applicable_to_cart(cart):
-                return False, "Ce code promo ne s'applique pas aux articles de votre panier."
-        
-        return True, "Code promo valide"
+        if self.single_use_per_user and user and self.used_by.filter(id=user.id).exists():
+            return False, "Vous avez déjà utilisé ce code promo."
+        if cart and self.minimum_amount > 0:
+            total = cart.get_total_price()
+            if total < self.minimum_amount:
+                return False, f"Le montant minimum est de {self.minimum_amount} €."
+        if cart and (self.categories.exists() or self.products.exists()):
+            cart_products = [item.product for item in cart.items.all()]
+            matches = any(
+                p in self.products.all() or p.category in self.categories.all()
+                for p in cart_products
+            )
+            if not matches:
+                return False, "Ce code ne s'applique pas aux produits de votre panier."
+        return True, "Valide"
     
-    def _is_applicable_to_cart(self, cart):
-        """Vérifie si le code s'applique au contenu du panier"""
-        if not self.categories.exists() and not self.products.exists():
-            return True  # Applicable à tous les produits
-        
-        # Utilisez une requête efficace si possible, mais le code actuel est fonctionnel
-        cart_products = [item.product for item in cart.items.all()]
-        
-        # Vérifier les produits spécifiques
-        if self.products.exists():
-            if any(product in self.products.all() for product in cart_products):
-                return True
-        
-        # Vérifier les catégories
-        if self.categories.exists():
-            cart_categories = {item.product.category for item in cart.items.all()}
-            if any(category in self.categories.all() for category in cart_categories):
-                return True
-        
-        return False
+    def calculate_discount(self, total):
+        if self.discount_type == 'fixed':
+            return min(self.discount_value, total)
+        elif self.discount_type == 'percentage':
+            return (self.discount_value / 100) * total
+        elif self.discount_type == 'free_shipping':
+            return Decimal('0')
+        return Decimal('0')
     
-    def calculate_discount(self, amount):
-        """Calcule le montant de la réduction"""
-        # ✅ S'assurer que amount est Decimal
-        if not isinstance(amount, Decimal):
-            amount = Decimal(str(amount))
-    
-        if self.discount_type == 'percentage':
-            discount = (amount * self.discount_value) / Decimal('100')
-        elif self.discount_type == 'fixed':
-            discount = min(self.discount_value, amount)
-        else:  # free_shipping
-            discount = Decimal('0')  # Géré séparément
-    
-        return discount
-    
-    def apply_discount(self, cart):
-        """Applique la réduction au panier"""
-        if self.discount_type == 'free_shipping':
-            return 0, "Livraison gratuite appliquée"
-        
-        applicable_amount = self._get_applicable_amount(cart)
-        discount = self.calculate_discount(applicable_amount)
-        
-        return discount, f"Réduction de {discount} € appliquée"
-    
-    def _get_applicable_amount(self, cart):
-        """Retourne le montant applicable pour la réduction"""
-        if not self.categories.exists() and not self.products.exists():
-            return cart.get_total_price()
-        
-        applicable_amount = 0
-        for item in cart.items.all():
-            if (self.products.filter(id=item.product.id).exists() or 
-                self.categories.filter(id=item.product.category.id).exists()):
-                applicable_amount += item.get_total_price()
-        
-        return applicable_amount
-    
-    def mark_as_used(self):
-        """Marque le code comme utilisé"""
+    def increment_usage(self, user=None):
         self.used_count += 1
+        if user and self.single_use_per_user:
+            self.used_by.add(user)
         self.save()
 
-# --- Modèles existants suivants (Cart, CartItem, Order, OrderItem, UserProfile, etc.) ---
-
 class Cart(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)
-    session_key = models.CharField(max_length=40, null=True, blank=True)
+    user = models.OneToOneField(User, on_delete=models.CASCADE, null=True, blank=True)
     created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
     
     class Meta:
-        ordering = ['-created']
+        ordering = ['-updated']
     
     def __str__(self):
-        if self.user:
-            return f"Panier de {self.user.username}"
-        return f"Panier session {self.session_key}"
+        return f"Panier de {self.user if self.user else 'Anonyme'}"
     
     def get_total_price(self):
-        try:
-            return sum(item.get_total_price() for item in self.items.all())
-        except:
-            return 0
+        return sum(item.get_cost() for item in self.items.all())
     
     def get_total_quantity(self):
-        try:
-            return sum(item.quantity for item in self.items.all())
-        except:
-            return 0
+        return sum(item.quantity for item in self.items.all())
     
-    def is_empty(self):
-        return self.items.count() == 0
+    def get_discount(self, coupon):
+        if not coupon:
+            return Decimal('0')
+        return coupon.calculate_discount(self.get_total_price())
+    
+    def get_final_price(self, coupon=None):
+        total = self.get_total_price()
+        discount = self.get_discount(coupon) if coupon else Decimal('0')
+        return total - discount
 
 class CartItem(models.Model):
     cart = models.ForeignKey(Cart, on_delete=models.CASCADE, related_name='items')
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
     quantity = models.PositiveIntegerField(default=1)
+    price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal('0.00')  # ← FIX : DEFAULT OBLIGATOIRE
+    )
     
     class Meta:
         unique_together = ['cart', 'product']
@@ -271,29 +187,22 @@ class CartItem(models.Model):
     def __str__(self):
         return f"{self.quantity} x {self.product.name}"
     
-    def get_total_price(self):
-        return self.quantity * self.product.price
+    def get_cost(self):
+        return self.price * self.quantity
     
     def is_available(self):
-        return self.product.is_in_stock() and self.quantity <= self.product.stock
+        return self.product.available and self.product.stock >= self.quantity
 
-# --- MODÈLE Order MIS À JOUR ---
 class Order(models.Model):
-    STATUS_PENDING = 'pending'
-    STATUS_PROCESSING = 'processing'
-    STATUS_SHIPPED = 'shipped'
-    STATUS_DELIVERED = 'delivered'
-    STATUS_CANCELLED = 'cancelled'
-    
     STATUS_CHOICES = [
-        (STATUS_PENDING, 'En attente'),
-        (STATUS_PROCESSING, 'En traitement'),
-        (STATUS_SHIPPED, 'Expédiée'),
-        (STATUS_DELIVERED, 'Livrée'),
-        (STATUS_CANCELLED, 'Annulée'),
+        ('pending', 'En attente'),
+        ('processing', 'En traitement'),
+        ('shipped', 'Expédiée'),
+        ('delivered', 'Livrée'),
+        ('cancelled', 'Annulée'),
     ]
     
-    user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, related_name='orders')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)
     first_name = models.CharField(max_length=50)
     last_name = models.CharField(max_length=50)
     email = models.EmailField()
@@ -303,74 +212,23 @@ class Order(models.Model):
     created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
     paid = models.BooleanField(default=False)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
-    
-    # ⭐ NOUVEAUX CHAMPS CODES PROMO & LIVRAISON
-    coupon = models.ForeignKey(
-        Coupon, 
-        on_delete=models.SET_NULL, 
-        null=True, 
-        blank=True,
-        related_name='orders'
-    )
-    discount_amount = models.DecimalField(
-        max_digits=10, 
-        decimal_places=2, 
-        default=0
-    )
-    shipping_cost = models.DecimalField(
-        max_digits=10, 
-        decimal_places=2, 
-        default=0
-    )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    coupon = models.ForeignKey(Coupon, on_delete=models.SET_NULL, null=True, blank=True)
+    discount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     
     class Meta:
         ordering = ['-created']
-        indexes = [
-            models.Index(fields=['created']),
-            models.Index(fields=['status']),
-            models.Index(fields=['paid']),
-        ]
+        indexes = [models.Index(fields=['-created'])]
     
     def __str__(self):
-        return f"Commande #{self.id} - {self.first_name} {self.last_name}"
-    
-    def get_total_before_discount(self):
-        """Retourne le total avant réduction"""
-        try:
-            return sum(item.get_cost() for item in self.items.all())
-        except:
-            return 0
+        return f"Commande {self.id}"
     
     def get_total_cost(self):
-        """Retourne le coût total après réduction et avec frais de port"""
-        try:
-            total = sum(item.get_cost() for item in self.items.all())
-            total -= self.discount_amount
-            total += self.shipping_cost
-            return max(total, 0)  # Éviter les totaux négatifs
-        except:
-            return 0
+        total = sum(item.get_cost() for item in self.items.all())
+        return total - self.discount
     
-    def get_total_before_discount(self):
-        """Retourne le total des produits avant réduction et frais de port"""
-        try:
-            return sum(item.get_cost() for item in self.items.all())
-        except:
-            return 0
-    
-    def get_status_display_class(self):
-        status_classes = {
-            self.STATUS_PENDING: 'warning',
-            self.STATUS_PROCESSING: 'info',
-            self.STATUS_SHIPPED: 'primary',
-            self.STATUS_DELIVERED: 'success',
-            self.STATUS_CANCELLED: 'danger',
-        }
-        return status_classes.get(self.status, 'secondary')
-    
-    def can_be_cancelled(self):
-        return self.status in [self.STATUS_PENDING, self.STATUS_PROCESSING]
+    def get_absolute_url(self):
+        return reverse('shop:order_detail', args=[self.id])
 
 class OrderItem(models.Model):
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='items')
@@ -378,19 +236,16 @@ class OrderItem(models.Model):
     price = models.DecimalField(max_digits=10, decimal_places=2)
     quantity = models.PositiveIntegerField(default=1)
     
-    class Meta:
-        ordering = ['id']
-    
     def __str__(self):
-        return f"{self.quantity} x {self.product.name} (Commande #{self.order.id})"
+        return str(self.id)
     
     def get_cost(self):
         return self.price * self.quantity
 
 class UserProfile(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
-    birth_date = models.DateField()
-    phone_number = models.CharField(max_length=15)
+    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    birth_date = models.DateField(null=True, blank=True)
+    phone_number = models.CharField(max_length=15, blank=True)
     email_confirmed = models.BooleanField(default=False)
     confirmation_token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -413,14 +268,12 @@ class UserProfile(models.Model):
         return today.year - self.birth_date.year - ((today.month, today.day) < (self.birth_date.month, self.birth_date.day))
     
     def generate_new_confirmation_token(self):
-        """Génère un nouveau token de confirmation"""
         import uuid
         self.confirmation_token = uuid.uuid4()
         self.save()
         return self.confirmation_token
 
 class Favorite(models.Model):
-    """Modèle pour les produits favoris des utilisateurs"""
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='favorites')
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='favorited_by')
     created_at = models.DateTimeField(auto_now_add=True)
@@ -433,7 +286,6 @@ class Favorite(models.Model):
         return f"{self.user.username} - {self.product.name}"
 
 class ProductReview(models.Model):
-    """Modèle pour les avis et évaluations des produits"""
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='reviews')
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='reviews')
     rating = models.PositiveIntegerField(
@@ -446,7 +298,6 @@ class ProductReview(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
-    # NOUVEAUX CHAMPS POUR LA MODÉRATION
     reported = models.BooleanField(default=False, help_text="Avis signalé")
     report_reason = models.TextField(blank=True, help_text="Raison du signalement")
     moderator_notes = models.TextField(blank=True, help_text="Notes du modérateur")
@@ -461,30 +312,109 @@ class ProductReview(models.Model):
         return f"Avis de {self.user.username} sur {self.product.name}"
     
     def get_rating_stars(self):
-        """Retourne la représentation en étoiles de la note"""
         return '★' * self.rating + '☆' * (5 - self.rating)
     
-    # MÉTHODES DE MODÉRATION
     def mark_as_reported(self, reason=""):
-        """Marquer l'avis comme signalé"""
         self.reported = True
         self.report_reason = reason
         self.save()
     
     def approve(self):
-        """Approuver l'avis"""
         self.approved = True
         self.reported = False
         self.save()
     
     def reject(self, notes=""):
-        """Rejeter l'avis"""
         self.approved = False
         self.moderator_notes = notes
         self.save()
 
-    def mark_as_reported(self, reason=""):
-        """Marquer l'avis comme signalé"""
-        self.reported = True
-        self.report_reason = reason
-        self.save()
+class Vendor(models.Model):
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name='vendor_profile'
+    )
+    shop_name = models.CharField(
+        max_length=120,
+        unique=True,
+        help_text="Nom public de votre boutique (ex: « Maison Éternelle »)"
+    )
+    slug = models.SlugField(max_length=130, unique=True, blank=True)
+    logo = models.ImageField(
+        upload_to='vendors/logos/',
+        blank=True,
+        help_text="Logo carré 400×400px recommandé"
+    )
+    banner = models.ImageField(
+        upload_to='vendors/banners/',
+        blank=True,
+        help_text="Bannière 1920×600px"
+    )
+    description = models.TextField(
+        max_length=1000,
+        blank=True,
+        help_text="Présentez votre histoire, votre savoir-faire…"
+    )
+    short_bio = models.CharField(
+        max_length=160,
+        blank=True,
+        help_text="Phrase d’accroche (meta description)"
+    )
+    phone = models.CharField(max_length=20, blank=True)
+    website = models.URLField(blank=True)
+    instagram = models.CharField(max_length=100, blank=True)
+    address = models.CharField(max_length=255, blank=True)
+    city = models.CharField(max_length=100, blank=True)
+    country = models.CharField(max_length=100, default="France")
+    commission_rate = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=Decimal('15.00'),
+        validators=[MinValueValidator(0)],
+        help_text="Pourcentage prélevé par LuxuryZone (ex: 15%)"
+    )
+    is_approved = models.BooleanField(
+        default=False,
+        help_text="Cochez pour activer la boutique"
+    )
+    approved_at = models.DateTimeField(null=True, blank=True)
+    rejected_reason = models.TextField(blank=True)
+    total_sales = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total_orders = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Boutique Vendeur"
+        verbose_name_plural = "Boutiques Vendeurs"
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return self.shop_name
+
+    def get_absolute_url(self):
+        return reverse('shop:vendor_shop', args=[self.slug])
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = slugify(self.shop_name)
+            unique_slug = self.slug
+            num = 1
+            while Vendor.objects.filter(slug=unique_slug).exists():
+                unique_slug = f"{self.slug}-{num}"
+                num += 1
+            self.slug = unique_slug
+        super().save(*args, **kwargs)
+
+    def pending_orders(self):
+        return self.orders.filter(status='processing').count()
+
+    def monthly_revenue(self):
+        from django.utils import timezone
+        from datetime import timedelta
+        last_month = timezone.now() - timedelta(days=30)
+        return self.orders.filter(
+            created__gte=last_month,
+            paid=True
+        ).aggregate(total=models.Sum('get_total_cost'))['total'] or Decimal('0')

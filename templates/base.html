@@ -167,175 +167,106 @@
         .toast {
             background: rgba(0,0,0,0.9);
             border: 1px solid var(--gold);
-            color: #fff;
         }
     </style>
+    {% block extra_css %}{% endblock %}
 </head>
 <body>
-
     <!-- NAVBAR LUXE -->
     <nav class="navbar navbar-expand-lg navbar-dark fixed-top">
         <div class="container">
             <a class="navbar-brand" href="{% url 'shop:product_list' %}">
-                <i class="fas fa-crown"></i> LuxuryZone
+                <i class="fas fa-crown me-2"></i>LuxuryZone
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto align-items-center">
-                    {% if user.is_authenticated %}
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
-                            <i class="fas fa-user"></i> {{ user.first_name|default:user.username }}
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'shop:product_list' %}">
+                            <i class="fas fa-th-large me-1"></i>Produits
                         </a>
-                        <ul class="dropdown-menu dropdown-menu-dark">
-                            <li><a class="dropdown-item" href="{% url 'shop:profile' %}"><i class="fas fa-id-card"></i> Mon Profil</a></li>
-                            <li><a class="dropdown-item" href="{% url 'shop:order_history' %}"><i class="fas fa-history"></i> Historique</a></li>
-                            <li><a class="dropdown-item" href="{% url 'shop:favorite_list' %}"><i class="fas fa-heart"></i> Favoris</a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="{% url 'shop:logout' %}"><i class="fas fa-sign-out-alt"></i> Déconnexion</a></li>
-                        </ul>
                     </li>
-                    {% else %}
-                    <li class="nav-item"><a class="nav-link" href="{% url 'shop:login' %}"><i class="fas fa-sign-in-alt"></i> Connexion</a></li>
-                    <li class="nav-item"><a class="nav-link" href="{% url 'shop:register' %}"><i class="fas fa-user-plus"></i> Inscription</a></li>
-                    {% endif %}
-                    <li class="nav-item ms-3">
-                        <a class="nav-link position-relative" href="{% url 'shop:cart_detail' %}">
-                            <i class="fas fa-shopping-bag"></i> Panier
-                            {% if cart and cart.items.count > 0 %}
-                            <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill">
-                                {{ cart.items.count }}
-                            </span>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'shop:cart_detail' %}">
+                            <i class="fas fa-shopping-bag me-1"></i>Panier
+                            {% if cart.items.count > 0 %}
+                            <span class="badge bg-gold ms-1">{{ cart.items.count }}</span>
                             {% endif %}
                         </a>
                     </li>
+                    {% if user.is_authenticated %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'shop:order_history' %}">
+                            <i class="fas fa-box me-1"></i>Commandes
+                        </a>
+                    </li>
+                    {% endif %}
+                </ul>
+                <ul class="navbar-nav ms-auto">
+                    {% if user.is_authenticated %}
+                        {% if user.vendor_profile.is_approved %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'shop:vendor_dashboard' %}">
+                                <i class="fas fa-store me-1"></i>Ma Boutique
+                            </a>
+                        </li>
+                        {% endif %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'shop:favorite_list' %}">
+                                <i class="fas fa-heart me-1"></i>Wishlist
+                                {% if favorites_count > 0 %}
+                                <span class="badge bg-gold ms-1">{{ favorites_count }}</span>
+                                {% endif %}
+                            </a>
+                        </li>
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">
+                                <i class="fas fa-user-circle me-1"></i>{{ user.first_name|default:user.username }}
+                            </a>
+                            <ul class="dropdown-menu dropdown-menu-end bg-dark border-gold">
+                                <li><a class="dropdown-item text-white" href="{% url 'shop:profile' %}">Profil VIP</a></li>
+                                <li><hr class="dropdown-divider bg-gold opacity-25"></li>
+                                <li><a class="dropdown-item text-white" href="{% url 'shop:logout' %}">Déconnexion</a></li>
+                            </ul>
+                        </li>
+                    {% else %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'shop:login' %}">
+                                <i class="fas fa-sign-in-alt me-1"></i>Connexion
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'shop:register' %}">
+                                <i class="fas fa-user-plus me-1"></i>Inscription
+                            </a>
+                        </li>
+                    {% endif %}
                 </ul>
             </div>
         </div>
     </nav>
 
-    <div class="container mt-5 pt-5">
-        <!-- MESSAGE DE BIENVENUE -->
-        {% if user.is_authenticated %}
-        <div class="welcome-banner">
-            <h2>✨ Bienvenue, {{ user.first_name|default:user.username }} ✨</h2>
-            <p class="lead">Découvrez l’excellence réservée à nos membres privilégiés</p>
-            <a href="{% url 'shop:product_list' %}" class="btn btn-lux mt-3">Explorer la Collection Exclusive</a>
-        </div>
-        {% else %}
-        <div class="welcome-banner">
-            <h2>✨ LuxuryZone ✨</h2>
-            <p class="lead">L’adresse du luxe absolu</p>
-            <p><a href="{% url 'shop:register' %}" class="text-gold fw-bold">Rejoignez le cercle</a> ou <a href="{% url 'shop:login' %}" class="text-gold fw-bold">connectez-vous</a></p>
-        </div>
-        {% endif %}
+    <!-- CONTENU PRINCIPAL -->
+    <div class="container-fluid">
+        <main class="pt-5 mt-5 min-vh-100">
+            {% block content %}
+            {% endblock %}
+        </main>
 
-        {% if messages %}
-            {% for message in messages %}
-            <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
-                {{ message }}
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            </div>
-            {% endfor %}
-        {% endif %}
-
-        {% block content %}
-        <!-- PRODUITS PHARES -->
-        {% if request.path == '/' or request.path == '/shop/' %}
-        <section class="my-5">
-            <h2 class="text-center mb-5" style="color:var(--gold);font-size:3rem;">
-                <i class="fas fa-gem"></i> Sélection Prestige
-            </h2>
-            <div class="row g-4">
-                <!-- Produit 1 -->
-                <div class="col-md-3">
-                    <div class="card product-card h-100">
-                        <div class="position-relative overflow-hidden">
-                            <img src="https://via.placeholder.com/400x300/111/EEE?text=Montre+Or" class="card-img-top" alt="Montre Or">
-                            <span class="position-absolute top-0 start-0 m-3 px-3 py-1 rounded text-dark" style="background:linear-gradient(45deg,#D4AF37,#E8C56A);">
-                                <i class="fas fa-crown"></i> Exclusif
-                            </span>
-                        </div>
-                        <div class="card-body text-center">
-                            <h5>Montre Automatique Or 18k</h5>
-                            <p class="text-muted small">Édition limitée – 50 pièces</p>
-                            <div class="d-flex justify-content-center align-items-end gap-3">
-                                <span class="price">12 900€</span>
-                                <a href="#" class="btn btn-lux btn-sm">Acquérir</a>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <!-- Produit 2 -->
-                <div class="col-md-3">
-                    <div class="card product-card h-100">
-                        <div class="position-relative overflow-hidden">
-                            <img src="https://via.placeholder.com/400x300/111/EEE?text=Sac+Crocodile" class="card-img-top" alt="Sac Luxe">
-                            <span class="position-absolute top-0 start-0 m-3 px-3 py-1 rounded text-white" style="background:#8B4513;">
-                                <i class="fas fa-star"></i> Icône
-                            </span>
-                        </div>
-                        <div class="card-body text-center">
-                            <h5>Sac Kelly Crocodile</h5>
-                            <p class="text-muted small">Cuir véritable, couture sellier</p>
-                            <div class="d-flex justify-content-center align-items-end gap-3">
-                                <span class="price">28 000€</span>
-                                <a href="#" class="btn btn-lux btn-sm">Réserver</a>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <!-- Produit 3 -->
-                <div class="col-md-3">
-                    <div class="card product-card h-100">
-                        <div class="position-relative overflow-hidden">
-                            <img src="https://via.placeholder.com/400x300/111/EEE?text=Parfum" class="card-img-top" alt="Parfum">
-                            <span class="position-absolute top-0 start-0 m-3 px-3 py-1 rounded text-white" style="background:#4B0082;">
-                                <i class="fas fa-vial"></i> Signature
-                            </span>
-                        </div>
-                        <div class="card-body text-center">
-                            <h5>Parfum Impérial</h5>
-                            <p class="text-muted small">100ml – Oud & Safran</p>
-                            <div class="d-flex justify-content-center align-items-end gap-3">
-                                <del class="old-price">1 200€</del>
-                                <span class="price">899€</span>
-                                <a href="#" class="btn btn-lux btn-sm">Ajouter</a>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <!-- Produit 4 -->
-                <div class="col-md-3">
-                    <div class="card product-card h-100">
-                        <div class="position-relative overflow-hidden">
-                            <img src="https://via.placeholder.com/400x300/111/EEE?text=Stylo" class="card-img-top" alt="Stylo">
-                            <span class="position-absolute top-0 start-0 m-3 px-3 py-1 rounded text-white" style="background:#B22222;">
-                                <i class="fas fa-pen-fancy"></i> Artisanat
-                            </span>
-                        </div>
-                        <div class="card-body text-center">
-                            <h5>Stylo Plume Or & Diamants</h5>
-                            <p class="text-muted small">Gravure personnalisée offerte</p>
-                            <div class="d-flex justify-content-center align-items-end gap-3">
-                                <span class="price">4 500€</span>
-                                <a href="#" class="btn btn-lux btn-sm">Commander</a>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="text-center mt-5">
+        <!-- BANNER ACCUEIL (optionnel) -->
+        {% if not request.path|slice:":11" == "/product/list" %}
+        <section class="welcome-banner my-5">
+            <div class="container">
+                <h2 class="mb-4">Bienvenue dans l'univers du luxe</h2>
+                <p class="lead mb-4">Découvrez des pièces exclusives qui transcendent le temps.</p>
                 <a href="{% url 'shop:product_list' %}" class="btn btn-lux btn-lg">
                     <i class="fas fa-th-large"></i> Découvrir Toute la Collection
                 </a>
             </div>
         </section>
         {% endif %}
-        {% endblock %}
     </div>
 
     <!-- FOOTER LUXE -->
@@ -451,5 +382,6 @@
             }
         });
     </script>
+    {% block extra_js %}{% endblock %}
 </body>
 </html>

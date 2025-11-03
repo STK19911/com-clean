@@ -38,7 +38,9 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    "shop",
+    'django.contrib.humanize',
+    'widget_tweaks',
+    'shop',  # ← Supprimé le doublon "shop"
 ]
 
 MIDDLEWARE = [
@@ -56,7 +58,7 @@ ROOT_URLCONF = "ecommerce.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [BASE_DIR / 'templates'],
+        "DIRS": [BASE_DIR / 'templates'],  # ← Global templates/ est bien configuré
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [

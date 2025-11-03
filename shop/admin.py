@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.models import User
-from .models import Category, Coupon, Product, Cart, CartItem, Order, OrderItem, UserProfile, Favorite, ProductReview
+from .models import Category, Coupon, Product, Cart, CartItem, Order, OrderItem, UserProfile, Favorite, ProductReview, Vendor  # AJOUT Vendor
 
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):
@@ -89,17 +89,10 @@ class UserProfileAdmin(admin.ModelAdmin):
 
     def resend_confirmation_email(self, request, queryset):
         """Action pour renvoyer l'email de confirmation"""
-        from .email_service import send_confirmation_email
-        count = 0
         for profile in queryset:
-            if not profile.email_confirmed:
-                profile.generate_new_confirmation_token()
-                send_confirmation_email(profile.user)
-                count += 1
-        self.message_user(request, f'{count} email(s) de confirmation renvoyé(s).')
+            send_confirmation_email(profile.user)
+        self.message_user(request, f'Email de confirmation renvoyé à {queryset.count()} utilisateur(s).')
     resend_confirmation_email.short_description = "Renvoyer l'email de confirmation"
-
-# ✅ NOUVEAUX ADMIN POUR FAVORIS ET AVIS
 
 @admin.register(Favorite)
 class FavoriteAdmin(admin.ModelAdmin):
@@ -110,34 +103,26 @@ class FavoriteAdmin(admin.ModelAdmin):
 
 @admin.register(ProductReview)
 class ProductReviewAdmin(admin.ModelAdmin):
-    list_display = ['user', 'product', 'rating', 'title', 'approved', 'reported', 'created_at']
+    list_display = ['user', 'product', 'rating', 'title', 'approved', 'reported', 'needs_moderation', 'created_at']
     list_filter = ['approved', 'reported', 'rating', 'created_at']
-    list_editable = ['approved']
     search_fields = ['user__username', 'product__name', 'title', 'comment']
-    date_hierarchy = 'created_at'
     readonly_fields = ['created_at', 'updated_at']
+    date_hierarchy = 'created_at'
+    ordering = ['-created_at']
     
-    actions = ['approve_reviews', 'disapprove_reviews', 'mark_as_reported', 'bulk_approve_trusted_users']
-    
-    # ✅ FILTRES PERSONNALISÉS POUR L'ADMIN
-    def get_queryset(self, request):
-        qs = super().get_queryset(request)
-        # Par défaut, montrer d'abord les avis nécessitant une modération
-        if request.path == '/admin/shop/productreview/':
-            return qs.order_by('approved', 'reported', '-created_at')
-        return qs
+    actions = ['approve_reviews', 'reject_reviews', 'mark_as_reported', 'bulk_approve_trusted_users']
     
     def approve_reviews(self, request, queryset):
-        """Action pour approuver les avis sélectionnés"""
+        """Action pour approuver les avis"""
         updated = queryset.update(approved=True, reported=False)
         self.message_user(request, f'{updated} avis approuvé(s).')
     approve_reviews.short_description = "Approuver les avis sélectionnés"
     
-    def disapprove_reviews(self, request, queryset):
-        """Action pour désapprouver les avis sélectionnés"""
+    def reject_reviews(self, request, queryset):
+        """Action pour rejeter les avis"""
         updated = queryset.update(approved=False)
-        self.message_user(request, f'{updated} avis désapprouvé(s).')
-    disapprove_reviews.short_description = "Désapprouver les avis sélectionnés"
+        self.message_user(request, f'{updated} avis rejeté(s).')
+    reject_reviews.short_description = "Rejeter les avis sélectionnés"
     
     def mark_as_reported(self, request, queryset):
         """Action pour marquer comme signalé"""
@@ -162,8 +147,6 @@ class ProductReviewAdmin(admin.ModelAdmin):
         return not obj.approved or obj.reported
     needs_moderation.boolean = True
     needs_moderation.short_description = "Modération nécessaire"
-    
-    list_display = ['user', 'product', 'rating', 'title', 'approved', 'reported', 'needs_moderation', 'created_at']
 
 @admin.register(Coupon)
 class CouponAdmin(admin.ModelAdmin):
@@ -221,3 +204,46 @@ class CouponAdmin(admin.ModelAdmin):
         updated = queryset.update(used_count=0)
         self.message_user(request, f'{updated} compteur(s) d\'utilisation remis à zéro.')
     reset_usage_count.short_description = "Remettre à zéro le compteur d'utilisation"
+
+# --- AJOUT : ADMIN POUR VENDOR ---
+@admin.register(Vendor)
+class VendorAdmin(admin.ModelAdmin):
+    list_display = ['shop_name', 'user', 'is_approved', 'total_sales', 'created_at']
+    list_filter = ['is_approved', 'country', 'created_at']
+    search_fields = ['shop_name', 'user__email', 'user__username']
+    readonly_fields = ['created_at', 'updated_at', 'total_sales', 'total_orders']
+    fieldsets = (
+        ("Boutique", {
+            'fields': ('user', 'shop_name', 'slug', 'logo', 'banner')
+        }),
+        ("Présentation", {
+            'fields': ('description', 'short_bio')
+        }),
+        ("Contact", {
+            'fields': ('phone', 'website', 'instagram', 'address', 'city', 'country')
+        }),
+        ("Finances", {
+            'fields': ('commission_rate',)
+        }),
+        ("Modération", {
+            'fields': ('is_approved', 'approved_at', 'rejected_reason'),
+            'classes': ('collapse',)
+        }),
+        ("Stats", {
+            'fields': ('total_sales', 'total_orders', 'created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+
+    actions = ['approve_vendors', 'reject_vendors']
+
+    def approve_vendors(self, request, queryset):
+        from django.utils import timezone
+        updated = queryset.update(is_approved=True, approved_at=timezone.now())
+        self.message_user(request, f"{updated} boutique(s) approuvée(s).")
+    approve_vendors.short_description = "Approuver les boutiques"
+
+    def reject_vendors(self, request, queryset):
+        updated = queryset.update(is_approved=False)
+        self.message_user(request, f"{updated} boutique(s) refusée(s).")
+    reject_vendors.short_description = "Refuser les boutiques"
