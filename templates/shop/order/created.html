@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}Commande Confirmée - MonShop{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card border-success">
+            <div class="card-header bg-success text-white">
+                <h2 class="mb-0"><i class="fas fa-check-circle"></i> Commande confirmée !</h2>
+            </div>
+            <div class="card-body text-center">
+                <div class="mb-4">
+                    <i class="fas fa-check-circle fa-5x text-success mb-3"></i>
+                    <h3>Merci pour votre commande !</h3>
+                    <p class="lead">Votre commande a été enregistrée avec succès.</p>
+                </div>
+                
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <h5>Détails de la commande</h5>
+                        <p><strong>N° de commande :</strong> #{{ order.id }}</p>
+                        <p><strong>Date :</strong> {{ order.created|date:"d/m/Y H:i" }}</p>
+                        <p><strong>Total :</strong> {{ order.get_total_cost }} €</p>
+                        <p><strong>Statut :</strong> 
+                            <span class="badge bg-warning">{{ order.get_status_display }}</span>
+                        </p>
+                    </div>
+                </div>
+                
+                <div class="alert alert-info">
+                    <h6><i class="fas fa-info-circle"></i> Prochaines étapes</h6>
+                    <p class="mb-0">
+                        Vous recevrez un email de confirmation sous peu. 
+                        Vous pouvez suivre l'état de votre commande dans votre espace client.
+                    </p>
+                </div>
+                
+                <div class="d-grid gap-2 d-md-block">
+                    <a href="{% url 'shop:order_detail' order.id %}" class="btn btn-primary">
+                        <i class="fas fa-eye"></i> Voir le détail de la commande
+                    </a>
+                    <a href="{% url 'shop:product_list' %}" class="btn btn-outline-secondary">
+                        <i class="fas fa-shopping-bag"></i> Continuer mes achats
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

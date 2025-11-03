@@ -1,0 +1,273 @@
+{% extends "base.html" %}
+
+{% block title %}{{ product.name }} - KaderShop{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-6">
+        {% if product.image %}
+        <img src="{{ product.image.url }}" class="img-fluid rounded" alt="{{ product.name }}">
+        {% else %}
+        <div class="bg-light rounded d-flex align-items-center justify-content-center" style="height: 400px;">
+            <i class="fas fa-image fa-5x text-muted"></i>
+        </div>
+        {% endif %}
+    </div>
+    
+    <div class="col-md-6">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{% url 'shop:product_list' %}">Boutique</a></li>
+                <li class="breadcrumb-item"><a href="{% url 'shop:product_list_by_category' product.category.slug %}">{{ product.category.name }}</a></li>
+                <li class="breadcrumb-item active">{{ product.name }}</li>
+            </ol>
+        </nav>
+        
+        <div class="d-flex justify-content-between align-items-start mb-3">
+            <h1 class="display-5">{{ product.name }}</h1>
+            <!-- ✅ BOUTON FAVORIS -->
+            {% if user.is_authenticated %}
+            <a href="{% url 'shop:toggle_favorite' product.id %}" 
+               class="btn btn-outline-danger favorite-btn ms-3" 
+               data-product-id="{{ product.id }}"
+               title="{% if is_favorite %}Retirer des favoris{% else %}Ajouter aux favoris{% endif %}">
+                <i class="{% if is_favorite %}fas{% else %}far{% endif %} fa-heart"></i>
+            </a>
+            {% endif %}
+        </div>
+        
+        <!-- ✅ NOTES ET AVIS -->
+        <div class="mb-3">
+            <div class="d-flex align-items-center">
+                <span class="h3 text-primary me-3">{{ product.price }} €</span>
+                {% if product.average_rating > 0 %}
+                <div class="d-flex align-items-center">
+                    <span class="text-warning me-1">
+                        {% for i in "12345" %}
+                            {% if forloop.counter <= product.average_rating %}
+                                ★
+                            {% else %}
+                                ☆
+                            {% endif %}
+                        {% endfor %}
+                    </span>
+                    <small class="text-muted ms-1">({{ product.average_rating }}/5 - {{ product.review_count }} avis)</small>
+                </div>
+                {% else %}
+                <small class="text-muted">Aucun avis</small>
+                {% endif %}
+            </div>
+            
+            {% if product.stock > 0 %}
+                <span class="badge bg-success">En stock ({{ product.stock }})</span>
+            {% else %}
+                <span class="badge bg-danger">Rupture de stock</span>
+            {% endif %}
+        </div>
+        
+        <p class="lead">{{ product.description }}</p>
+        
+        {% if product.stock > 0 %}
+        <form action="{% url 'shop:cart_add' product.id %}" method="post" class="mb-4">
+            {% csrf_token %}
+            <div class="row g-3 align-items-center">
+                <div class="col-auto">
+                    <label for="id_quantity" class="col-form-label">Quantité:</label>
+                </div>
+                <div class="col-auto">
+                    <input type="number" name="quantity" value="1" min="1" max="{{ product.stock }}" 
+                           class="form-control" style="width: 100px;" required>
+                </div>
+                <div class="col-auto">
+                    <button type="submit" class="btn btn-primary btn-lg">
+                        <i class="fas fa-cart-plus"></i> Ajouter au panier
+                    </button>
+                </div>
+            </div>
+            <input type="hidden" name="update" value="False">
+        </form>
+        {% else %}
+        <button class="btn btn-secondary btn-lg" disabled>
+            Produit indisponible
+        </button>
+        {% endif %}
+        
+        <div class="mt-4">
+            <h5>Informations produit</h5>
+            <ul class="list-unstyled">
+                <li><strong>Catégorie:</strong> {{ product.category.name }}</li>
+                <li><strong>Stock disponible:</strong> {{ product.stock }} unité(s)</li>
+                <li><strong>Ajouté le:</strong> {{ product.created|date:"d/m/Y" }}</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<!-- ✅ SECTION AVIS -->
+<div class="row mt-5">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="mb-0">
+                    <i class="fas fa-star text-warning"></i> 
+                    Avis clients
+                    {% if product.average_rating > 0 %}
+                    <span class="badge bg-primary ms-2">{{ product.average_rating }}/5</span>
+                    <small class="text-muted">({{ product.review_count }} avis)</small>
+                    {% endif %}
+                </h3>
+            </div>
+            <div class="card-body">
+                <!-- ✅ BOUTON POUR AJOUTER UN AVIS -->
+                {% if user.is_authenticated %}
+                    {% if can_review %}
+                        {% if user_review %}
+                        <div class="alert alert-info">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <strong>Votre avis:</strong> 
+                                    <span class="text-warning">{{ user_review.get_rating_stars }}</span>
+                                    - {{ user_review.title }}
+                                    {% if not user_review.approved %}
+                                    <span class="badge bg-warning ms-2">En attente de modération</span>
+                                    {% endif %}
+                                </div>
+                                <div>
+                                    <a href="{% url 'shop:add_review' product.id %}" class="btn btn-sm btn-outline-primary me-2">
+                                        <i class="fas fa-edit"></i> Modifier
+                                    </a>
+                                    <a href="{% url 'shop:delete_review' user_review.id %}" class="btn btn-sm btn-outline-danger" 
+                                       onclick="return confirm('Êtes-vous sûr de vouloir supprimer votre avis ?')">
+                                        <i class="fas fa-trash"></i> Supprimer
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                        {% else %}
+                        <div class="text-center mb-4">
+                            <p>Vous avez commandé ce produit. Partagez votre expérience !</p>
+                            <a href="{% url 'shop:add_review' product.id %}" class="btn btn-primary">
+                                <i class="fas fa-pen"></i> Laisser un avis
+                            </a>
+                        </div>
+                        {% endif %}
+                    {% else %}
+                    <div class="alert alert-secondary text-center">
+                        <i class="fas fa-info-circle"></i>
+                        Vous devez avoir commandé ce produit pour laisser un avis.
+                    </div>
+                    {% endif %}
+                {% else %}
+                <div class="alert alert-warning text-center">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <a href="{% url 'shop:login' %}" class="alert-link">Connectez-vous</a> 
+                    pour laisser un avis sur ce produit.
+                </div>
+                {% endif %}
+                
+                <!-- ✅ LISTE DES AVIS APPROUVÉS -->
+                {% if approved_reviews %}
+                <div class="mt-4">
+                    <h5>Avis clients ({{ approved_reviews.count }})</h5>
+                    {% for review in approved_reviews %}
+                    <div class="card mb-3">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div class="flex-grow-1">
+                                    <h6 class="card-title mb-1">{{ review.title }}</h6>
+                                    <div class="text-warning mb-2">
+                                        {{ review.get_rating_stars }}
+                                    </div>
+                                    <p class="card-text">{{ review.comment }}</p>
+                                </div>
+                                <div class="text-end">
+                                    <small class="text-muted">
+                                        Par {{ review.user.first_name|default:review.user.username }}<br>
+                                        {{ review.created_at|date:"d/m/Y" }}
+                                    </small>
+                                    <!-- ✅ BOUTON DE SIGNALEMENT -->
+                                    {% if user.is_authenticated and user != review.user %}
+                                    <div class="mt-2">
+                                        <button type="button" class="btn btn-sm btn-outline-danger" 
+                                                data-bs-toggle="modal" 
+                                                data-bs-target="#reportModal{{ review.id }}">
+                                            <i class="fas fa-flag"></i> Signaler
+                                        </button>
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Modal de signalement -->
+                    <div class="modal fade" id="reportModal{{ review.id }}" tabindex="-1">
+                        <div class="modal-dialog">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title">Signaler cet avis</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                </div>
+                                <form method="post" action="{% url 'shop:report_review' review.id %}">
+                                    {% csrf_token %}
+                                    <div class="modal-body">
+                                        <p>Pourquoi signalez-vous cet avis ?</p>
+                                        <select name="reason" class="form-select">
+                                            <option value="Contenu inapproprié">Contenu inapproprié</option>
+                                            <option value="Spam ou publicité">Spam ou publicité</option>
+                                            <option value="Information fausse">Information fausse</option>
+                                            <option value="Harcèlement">Harcèlement</option>
+                                            <option value="Autre">Autre raison</option>
+                                        </select>
+                                        <div class="mt-3">
+                                            <label for="customReason{{ review.id }}" class="form-label">Précisez (optionnel) :</label>
+                                            <textarea name="custom_reason" id="customReason{{ review.id }}" 
+                                                      class="form-control" rows="2" 
+                                                      placeholder="Donnez plus de détails..."></textarea>
+                                        </div>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                                        <button type="submit" class="btn btn-danger">Signaler</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% elif not user_review and not can_review %}
+                <div class="text-center py-4">
+                    <i class="fas fa-comments fa-3x text-muted mb-3"></i>
+                    <h5 class="text-muted">Aucun avis pour le moment</h5>
+                    <p class="text-muted">Soyez le premier à laisser un avis sur ce produit !</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Produits similaires -->
+{% if similar_products %}
+<div class="row mt-5">
+    <div class="col-12">
+        <h3>Produits similaires</h3>
+        <div class="row">
+            {% for similar in similar_products %}
+            <div class="col-lg-3 col-md-4 col-sm-6 mb-4">
+                <div class="card product-card h-100">
+                    <img src="{{ similar.image.url }}" class="card-img-top" alt="{{ similar.name }}" style="height: 150px; object-fit: cover;">
+                    <div class="card-body">
+                        <h6 class="card-title">{{ similar.name }}</h6>
+                        <p class="card-text text-primary">{{ similar.price }} €</p>
+                        <a href="{% url 'shop:product_detail' similar.id similar.slug %}" class="btn btn-sm btn-outline-primary">Voir</a>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

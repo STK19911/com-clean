@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block title %}Mon Profil - MonShop{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5>Informations personnelles</h5>
+            </div>
+            <div class="card-body">
+                <p><strong>Nom d'utilisateur :</strong> {{ user.username }}</p>
+                <p><strong>Email :</strong> {{ user.email|default:"Non renseigné" }}</p>
+                <p><strong>Prénom :</strong> {{ user.first_name|default:"Non renseigné" }}</p>
+                <p><strong>Nom :</strong> {{ user.last_name|default:"Non renseigné" }}</p>
+                <p><strong>Date d'inscription :</strong> {{ user.date_joined|date:"d/m/Y" }}</p>
+                
+                <!-- ✅ STATISTIQUES -->
+                <div class="mt-4 pt-3 border-top">
+                    <h6>Statistiques</h6>
+                    <p><strong>Commandes :</strong> {{ orders|length }}</p>
+                    <p><strong>Favoris :</strong> {{ favorites_count }}</p>
+                    <p><strong>Avis :</strong> {{ reviews_count }}</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- ✅ LIENS RAPIDES -->
+        <div class="card mt-3">
+            <div class="card-body">
+                <h6>Accès rapide</h6>
+                <div class="d-grid gap-2">
+                    <a href="{% url 'shop:favorite_list' %}" class="btn btn-outline-danger">
+                        <i class="fas fa-heart"></i> Mes Favoris
+                    </a>
+                    <a href="{% url 'shop:order_history' %}" class="btn btn-outline-primary">
+                        <i class="fas fa-history"></i> Mes Commandes
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5>Mes commandes récentes</h5>
+            </div>
+            <div class="card-body">
+                {% if orders %}
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>N° Commande</th>
+                                    <th>Date</th>
+                                    <th>Total</th>
+                                    <th>Statut</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for order in orders %}
+                                <tr>
+                                    <td>#{{ order.id }}</td>
+                                    <td>{{ order.created|date:"d/m/Y" }}</td>
+                                    <td>{{ order.get_total_cost }} €</td>
+                                    <td>
+                                        <span class="badge 
+                                            {% if order.status == 'delivered' %}bg-success
+                                            {% elif order.status == 'cancelled' %}bg-danger
+                                            {% else %}bg-warning{% endif %}">
+                                            {{ order.get_status_display }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <a href="{% url 'shop:order_detail' order.id %}" class="btn btn-sm btn-outline-primary">
+                                            Détails
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <p class="text-muted">Vous n'avez pas encore passé de commande.</p>
+                    <a href="{% url 'shop:product_list' %}" class="btn btn-primary">Commencer mes achats</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

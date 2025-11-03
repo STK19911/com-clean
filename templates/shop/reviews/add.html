@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block title %}Laisser un avis - {{ product.name }} - KaderShop{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h2 class="mb-0">
+                    <i class="fas fa-star text-warning"></i>
+                    {% if review %}Modifier votre avis{% else %}Laisser un avis{% endif %}
+                </h2>
+                <p class="mb-0 text-muted">Sur {{ product.name }}</p>
+            </div>
+            <div class="card-body">
+                <div class="row mb-4">
+                    <div class="col-md-3">
+                        {% if product.image %}
+                        <img src="{{ product.image.url }}" class="img-fluid rounded" alt="{{ product.name }}">
+                        {% else %}
+                        <div class="bg-light rounded d-flex align-items-center justify-content-center" style="height: 100px;">
+                            <i class="fas fa-image fa-2x text-muted"></i>
+                        </div>
+                        {% endif %}
+                    </div>
+                    <div class="col-md-9">
+                        <h5>{{ product.name }}</h5>
+                        <p class="text-muted mb-0">{{ product.description|truncatewords:20 }}</p>
+                    </div>
+                </div>
+
+                <form method="post">
+                    {% csrf_token %}
+                    
+                    <div class="mb-3">
+                        <label class="form-label"><strong>Note *</strong></label>
+                        <div>
+                            {{ form.rating }}
+                        </div>
+                        {% if form.rating.errors %}
+                            <div class="text-danger small">{{ form.rating.errors }}</div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="{{ form.title.id_for_label }}" class="form-label"><strong>Titre *</strong></label>
+                        {{ form.title }}
+                        {% if form.title.errors %}
+                            <div class="text-danger small">{{ form.title.errors }}</div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label for="{{ form.comment.id_for_label }}" class="form-label"><strong>Commentaire *</strong></label>
+                        {{ form.comment }}
+                        {% if form.comment.errors %}
+                            <div class="text-danger small">{{ form.comment.errors }}</div>
+                        {% endif %}
+                        <div class="form-text">
+                            Décrivez votre expérience avec ce produit. Votre avis aidera d'autres clients à faire leur choix.
+                        </div>
+                    </div>
+                    
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i>
+                        Votre avis sera soumis à modération avant publication.
+                    </div>
+                    
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <a href="{% url 'shop:product_detail' product.id product.slug %}" class="btn btn-outline-secondary me-md-2">
+                            <i class="fas fa-arrow-left"></i> Retour
+                        </a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-paper-plane"></i>
+                            {% if review %}Modifier l'avis{% else %}Publier l'avis{% endif %}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

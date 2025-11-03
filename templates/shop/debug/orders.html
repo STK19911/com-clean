@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}Débogage Commandes - KaderShop{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h2>Débogage des commandes pour {{ product.name }}</h2>
+    
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5>Informations</h5>
+            <p><strong>Utilisateur:</strong> {{ request.user.email }}</p>
+            <p><strong>Produit:</strong> {{ product.name }}</p>
+            <p><strong>A commandé ce produit:</strong> {{ has_ordered|yesno:"Oui,Non" }}</p>
+            <p><strong>Nombre de commandes trouvées:</strong> {{ order_count }}</p>
+        </div>
+    </div>
+
+    {% if user_orders %}
+    <div class="card">
+        <div class="card-header">
+            <h5>Commandes trouvées</h5>
+        </div>
+        <div class="card-body">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>ID Commande</th>
+                        <th>Statut</th>
+                        <th>Payée</th>
+                        <th>Quantité</th>
+                        <th>Date</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for order_item in user_orders %}
+                    <tr>
+                        <td>#{{ order_item.order.id }}</td>
+                        <td>{{ order_item.order.get_status_display }}</td>
+                        <td>{{ order_item.order.paid|yesno:"Oui,Non" }}</td>
+                        <td>{{ order_item.quantity }}</td>
+                        <td>{{ order_item.order.created|date:"d/m/Y H:i" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% else %}
+    <div class="alert alert-warning">
+        Aucune commande trouvée pour ce produit.
+    </div>
+    {% endif %}
+    
+    <a href="{% url 'shop:product_detail' product.id product.slug %}" class="btn btn-primary mt-3">
+        Retour au produit
+    </a>
+</div>
+{% endblock %}

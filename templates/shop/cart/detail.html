@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+
+{% block title %}Mon Panier - KaderShop{% endblock %}
+
+{% block content %}
+<h2 class="mb-4">Mon Panier</h2>
+
+{% if cart.items.count > 0 %}
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Articles dans le panier</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Produit</th>
+                                <th>Prix</th>
+                                <th>Quantité</th>
+                                <th>Total</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in cart.items.all %}
+                            <tr class="{% if not item.is_available %}table-warning{% endif %}">
+                                <td>
+                                    <div class="d-flex align-items-center">
+                                        {% if item.product.image %}
+                                        <img src="{{ item.product.image.url }}" alt="{{ item.product.name }}" style="width: 50px; height: 50px; object-fit: cover;" class="rounded me-3">
+                                        {% endif %}
+                                        <div>
+                                            <h6 class="mb-0">{{ item.product.name }}</h6>
+                                            <small class="text-muted">{{ item.product.category.name }}</small>
+                                            {% if not item.is_available %}
+                                                <div class="text-danger small mt-1">
+                                                    <i class="fas fa-exclamation-triangle"></i>
+                                                    Stock insuffisant ({{ item.product.stock }} disponible)
+                                                </div>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>{{ item.product.price }} €</td>
+                                <td>
+                                    <form action="{% url 'shop:cart_update' item.product.id %}" method="post" class="d-flex align-items-center">
+                                        {% csrf_token %}
+                                        <input type="number" 
+                                               name="quantity" 
+                                               value="{{ item.quantity }}" 
+                                               min="1" 
+                                               max="{{ item.product.stock }}" 
+                                               class="form-control form-control-sm {% if not item.is_available %}is-invalid{% endif %}" 
+                                               style="width: 80px;"
+                                               onchange="this.form.submit()">
+                                        <button type="submit" class="btn btn-sm btn-outline-primary ms-2" title="Mettre à jour">
+                                            <i class="fas fa-sync"></i>
+                                        </button>
+                                    </form>
+                                </td>
+                                <td>{{ item.get_total_price }} €</td>
+                                <td>
+                                    <form action="{% url 'shop:cart_remove' item.product.id %}" method="post" class="d-inline">
+                                        {% csrf_token %}
+                                        <button type="submit" 
+                                                class="btn btn-sm btn-outline-danger" 
+                                                title="Supprimer"
+                                                onclick="return confirm('Êtes-vous sûr de vouloir supprimer cet article ?')">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </form> 
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ✅ SECTION CODE PROMO CORRIGÉE -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-tag text-success"></i>
+                    Code promo
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if cart.coupon_code %}
+                <div class="alert alert-success">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>Code appliqué : {{ cart.coupon_code }}</strong>
+                            {% if cart.coupon_type == 'free_shipping' %}
+                            <br>
+                            <span class="text-success">🎉 Livraison gratuite appliquée !</span>
+                            {% elif cart.discount_amount > 0 %}
+                            <br>
+                            <span class="text-success">🎉 Réduction de {{ cart.discount_amount }} € appliquée !</span>
+                            {% endif %}
+                        </div>
+                        <!-- ✅ CORRECTION : Formulaire avec CSRF -->
+                        <form action="{% url 'shop:remove_coupon' %}" method="post" class="d-inline">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm btn-outline-danger">
+                                <i class="fas fa-times"></i> Retirer
+                            </button>
+                        </form>
+                    </div>
+                </div>
+                {% else %}
+                <!-- ✅ FORMULAIRE DÉJÀ CORRECT -->
+                <form action="{% url 'shop:apply_coupon' %}" method="post" class="d-flex">
+                    {% csrf_token %}
+                    <div class="flex-grow-1 me-2">
+                        {{ coupon_form.code }}
+                        {% if coupon_form.code.errors %}
+                            <div class="text-danger small mt-1">{{ coupon_form.code.errors }}</div>
+                        {% endif %}
+                    </div>
+                    <button type="submit" class="btn btn-success">
+                        <i class="fas fa-check"></i> Appliquer
+                    </button>
+                </form>
+                <small class="text-muted mt-2 d-block">
+                    <i class="fas fa-info-circle"></i>
+                    Entrez votre code promo pour bénéficier d'une réduction.
+                </small>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Récapitulatif</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-flex justify-content-between mb-2">
+                    <span>Sous-total:</span>
+                    <span>{{ cart.get_total_price }} €</span>
+                </div>
+
+                <!-- ✅ RÉDUCTION -->
+                {% if cart.discount_amount > 0 %}
+                <div class="d-flex justify-content-between mb-2 text-success">
+                    <span>
+                        <i class="fas fa-tag"></i>
+                        Réduction ({{ cart.coupon_code }}):
+                    </span>
+                    <span>-{{ cart.discount_amount }} €</span>
+                </div>
+                {% endif %}
+
+                <div class="d-flex justify-content-between mb-2">
+                    <span>Livraison:</span>
+                    <span>
+                        {% if cart.coupon_type == 'free_shipping' %}
+                        <span class="text-success">Gratuite</span>
+                        {% else %}
+                        {% if cart.shipping_cost > 0 %}
+                        {{ cart.shipping_cost }} €
+                        {% else %}
+                        <span class="text-success">Gratuite</span>
+                        {% endif %}
+                        {% endif %}
+                    </span>
+                </div>
+
+                {% if cart.shipping_cost > 0 and cart.get_total_price < 50 %}
+                <div class="alert alert-info py-2 mb-2">
+                    <small>
+                        <i class="fas fa-shipping-fast"></i>
+                        Livraison gratuite à partir de 50€ d'achat
+                    </small>
+                </div>
+                {% endif %}
+
+                <hr>
+                <div class="d-flex justify-content-between mb-3">
+                    <strong>Total:</strong>
+                    <strong>{{ cart.final_total }} €</strong>
+                </div>
+                
+                <div class="d-grid gap-2">
+                    {% with has_insufficient_stock=cart.items.all|dictsort:"is_available"|first %}
+                    {% if not has_insufficient_stock or has_insufficient_stock.is_available %}
+                    <a href="{% url 'shop:order_create' %}" class="btn btn-primary btn-lg">
+                        <i class="fas fa-credit-card"></i> Passer la commande
+                    </a>
+                    {% else %}
+                    <button class="btn btn-secondary btn-lg" disabled title="Certains produits ne sont plus disponibles en stock">
+                        <i class="fas fa-exclamation-triangle"></i> Stock insuffisant
+                    </button>
+                    {% endif %}
+                    {% endwith %}
+                    <a href="{% url 'shop:product_list' %}" class="btn btn-outline-secondary">
+                        Continuer mes achats
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="text-center py-5">
+    <i class="fas fa-shopping-cart fa-4x text-muted mb-3"></i>
+    <h3 class="text-muted">Votre panier est vide</h3>
+    <p class="text-muted">Découvrez nos produits et ajoutez-les à votre panier.</p>
+    <a href="{% url 'shop:product_list' %}" class="btn btn-primary btn-lg">Découvrir la boutique</a>
+</div>
+{% endif %}
+{% endblock %}

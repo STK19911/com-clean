@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+
+{% block title %}Passer Commande - MonShop{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h2 class="mb-0">Passer la commande</h2>
+            </div>
+            <div class="card-body">
+                <!-- Récapitulatif du panier -->
+                <div class="mb-4">
+                    <h5>Récapitulatif de votre commande</h5>
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Produit</th>
+                                    <th>Quantité</th>
+                                    <th>Prix unitaire</th>
+                                    <th>Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in cart.items.all %}
+                                <tr>
+                                    <td>{{ item.product.name }}</td>
+                                    <td>{{ item.quantity }}</td>
+                                    <td>{{ item.product.price }} €</td>
+                                    <td>{{ item.get_total_price }} €</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                            <tfoot>
+                                <!-- ✅ SOUS-TOTAL -->
+                                <tr>
+                                    <td colspan="3" class="text-end"><strong>Sous-total :</strong></td>
+                                    <td><strong>{{ cart.get_total_price }} €</strong></td>
+                                </tr>
+
+                                <!-- ✅ RÉDUCTION -->
+                                {% if cart.discount_amount > 0 %}
+                                <tr class="table-success">
+                                    <td colspan="3" class="text-end">
+                                        <strong>Réduction ({{ cart.coupon_code }}) :</strong>
+                                    </td>
+                                    <td><strong>-{{ cart.discount_amount }} €</strong></td>
+                                </tr>
+                                {% endif %}
+
+                                <!-- ✅ FRAIS DE LIVRAISON -->
+                                <tr>
+                                    <td colspan="3" class="text-end"><strong>Livraison :</strong></td>
+                                    <td>
+                                        <strong>
+                                            {% if cart.coupon_type == 'free_shipping' %}
+                                            <span class="text-success">Gratuite</span>
+                                            {% else %}
+                                            {% if cart.shipping_cost > 0 %}
+                                            {{ cart.shipping_cost }} €
+                                            {% else %}
+                                            <span class="text-success">Gratuite</span>
+                                            {% endif %}
+                                            {% endif %}
+                                        </strong>
+                                    </td>
+                                </tr>
+
+                                <!-- ✅ TOTAL FINAL -->
+                                <tr class="table-primary">
+                                    <td colspan="3" class="text-end"><strong>Total :</strong></td>
+                                    <td><strong>{{ cart.final_total }} €</strong></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- ✅ SECTION CODE PROMO CORRIGÉE -->
+                {% if cart.coupon_code %}
+                <div class="alert alert-success mb-4">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <i class="fas fa-tag"></i>
+                            <strong>Code promo appliqué : {{ cart.coupon_code }}</strong>
+                            {% if cart.coupon_type == 'free_shipping' %}
+                            <br><span>🎉 Livraison gratuite !</span>
+                            {% elif cart.discount_amount > 0 %}
+                            <br><span>🎉 Économie de {{ cart.discount_amount }} € !</span>
+                            {% endif %}
+                        </div>
+                        <!-- ✅ CORRECTION : Remplacer le lien par un formulaire -->
+                        <form action="{% url 'shop:remove_coupon' %}" method="post" class="d-inline">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm btn-outline-danger">
+                                <i class="fas fa-times"></i> Changer
+                            </button>
+                        </form>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Formulaire de commande -->
+                <form method="post">
+                    {% csrf_token %}
+                    
+                    <h5 class="mb-3">Informations de livraison</h5>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="{{ form.first_name.id_for_label }}" class="form-label">Prénom</label>
+                            {{ form.first_name }}
+                            {% if form.first_name.errors %}
+                                <div class="text-danger small">{{ form.first_name.errors }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="{{ form.last_name.id_for_label }}" class="form-label">Nom</label>
+                            {{ form.last_name }}
+                            {% if form.last_name.errors %}
+                                <div class="text-danger small">{{ form.last_name.errors }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="{{ form.email.id_for_label }}" class="form-label">Email</label>
+                            {{ form.email }}
+                            {% if form.email.errors %}
+                                <div class="text-danger small">{{ form.email.errors }}</div>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="{{ form.address.id_for_label }}" class="form-label">Adresse</label>
+                            {{ form.address }}
+                            {% if form.address.errors %}
+                                <div class="text-danger small">{{ form.address.errors }}</div>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label for="{{ form.postal_code.id_for_label }}" class="form-label">Code postal</label>
+                                {{ form.postal_code }}
+                                {% if form.postal_code.errors %}
+                                    <div class="text-danger small">{{ form.postal_code.errors }}</div>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-8 mb-3">
+                                <label for="{{ form.city.id_for_label }}" class="form-label">Ville</label>
+                                {{ form.city }}
+                                {% if form.city.errors %}
+                                    <div class="text-danger small">{{ form.city.errors }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary btn-lg">
+                                <i class="fas fa-credit-card"></i> Confirmer la commande
+                            </button>
+                            <a href="{% url 'shop:cart_detail' %}" class="btn btn-outline-secondary">
+                                <i class="fas fa-arrow-left"></i> Retour au panier
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endblock %}
