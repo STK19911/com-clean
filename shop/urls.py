@@ -38,9 +38,12 @@ urlpatterns = [
     path('logout/', views.logout_view, name='logout'),
     path('register/', views.register_view, name='register'),
     path('profile/', views.profile_view, name='profile'),
-    path('confirm-email/<uuid:token>/', views.confirm_email_view, name='confirm_email'),
-    path('admin/confirm-email/<int:user_id>/', views.admin_confirm_email, name='admin_confirm_email'),
-    path('resend-confirmation/', views.resend_confirmation_email, name='resend_confirmation'),
+    
+    # ▼▼▼ LIGNES DE CONFIRMATION SUPPRIMÉES (CORRECTION) ▼▼▼
+    # path('confirm-email/<uuid:token>/', views.confirm_email_view, name='confirm_email'),
+    # path('admin/confirm-email/<int:user_id>/', views.admin_confirm_email, name='admin_confirm_email'),
+    # path('resend-confirmation/', views.resend_confirmation_email, name='resend_confirmation'),
+    # ▲▲▲ FIN SUPPRESSION ▲▲▲
 ]
 
 # ── AJOUT DES URLS VENDEUR ───────

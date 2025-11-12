@@ -75,24 +75,20 @@ class UserProfileAdmin(admin.ModelAdmin):
     readonly_fields = ['created_at', 'updated_at', 'confirmation_token']
     date_hierarchy = 'created_at'
     
-    actions = ['confirm_emails', 'resend_confirmation_email']
+    # ▼▼▼ ACTIONS SUPPRIMÉES ▼▼▼
+    # actions = ['confirm_emails', 'resend_confirmation_email']
+    # ▲▲▲ FIN SUPPRESSION ▲▲▲
 
     def get_full_name(self, obj):
         return obj.get_full_name()
     get_full_name.short_description = 'Nom complet'
 
-    def confirm_emails(self, request, queryset):
-        """Action pour confirmer manuellement les emails"""
-        updated = queryset.update(email_confirmed=True)
-        self.message_user(request, f'{updated} compte(s) confirmé(s) avec succès.')
-    confirm_emails.short_description = "Confirmer les emails sélectionnés"
-
-    def resend_confirmation_email(self, request, queryset):
-        """Action pour renvoyer l'email de confirmation"""
-        for profile in queryset:
-            send_confirmation_email(profile.user)
-        self.message_user(request, f'Email de confirmation renvoyé à {queryset.count()} utilisateur(s).')
-    resend_confirmation_email.short_description = "Renvoyer l'email de confirmation"
+    # ▼▼▼ FONCTIONS D'ACTION SUPPRIMÉES ▼▼▼
+    # def confirm_emails(self, request, queryset):
+    #     ...
+    # def resend_confirmation_email(self, request, queryset):
+    #     ...
+    # ▲▲▲ FIN SUPPRESSION ▲▲▲
 
 @admin.register(Favorite)
 class FavoriteAdmin(admin.ModelAdmin):

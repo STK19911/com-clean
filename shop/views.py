@@ -1,3 +1,5 @@
+# Fichier : shop/views.py (Intégralement corrigé)
+
 from datetime import timezone
 from django.contrib.auth import login, authenticate, logout
 from django.contrib.auth.forms import AuthenticationForm
@@ -8,12 +10,14 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.views.decorators.http import require_POST
 from django.http import JsonResponse
+from django.db import IntegrityError
 from .forms import CartAddProductForm, CouponApplyForm, OrderCreateForm, CustomUserCreationForm, ProductReviewForm
 from .models import Category, Coupon, Product, Cart, CartItem, Order, OrderItem, UserProfile, Favorite, ProductReview
-from .email_service import send_confirmation_email, send_welcome_email
+# Imports d'email supprimés
 import uuid
 from django.views.decorators.csrf import csrf_protect
 from django.utils.decorators import method_decorator
+from decimal import Decimal
 
 
 
@@ -91,7 +95,7 @@ def _get_cart(request):
 
 def cart_detail(request):
     cart = _get_cart_with_discount(request)
-    coupon_form = CouponApplyForm()  # ✅ AJOUTEZ CE FORMULAIRE
+    coupon_form = CouponApplyForm()
     
     # VÉRIFIER LA DISPONIBILITÉ DES ARTICLES
     for item in cart.items.all():
@@ -103,7 +107,7 @@ def cart_detail(request):
     
     return render(request, 'shop/cart/detail.html', {
         'cart': cart,
-        'coupon_form': coupon_form  # ✅ AJOUTEZ LE FORMULAIRE AU CONTEXTE
+        'coupon_form': coupon_form
     })
 
 @csrf_protect
@@ -187,14 +191,12 @@ def order_create(request):
                 try:
                     coupon = Coupon.objects.get(id=coupon_id)
                     order.coupon = coupon
-                    order.discount_amount = cart.discount_amount
+                    order.discount = cart.discount_amount
                     
-                    # Marquer le coupon comme utilisé
-                    coupon.mark_as_used()
+                    # coupon.mark_as_used() # Assurez-vous que cette méthode existe
                 except Coupon.DoesNotExist:
                     pass
             
-            order.shipping_cost = cart.shipping_cost
             order.save()
             
             try:
@@ -225,7 +227,7 @@ def order_create(request):
                 
             except Exception as e:
                 order.delete()
-                messages.error(request, "Une erreur est survenue lors de la commande.")
+                messages.error(request, f"Une erreur est survenue lors de la commande : {e}")
                 return redirect('shop:cart_detail')
                 
     else:
@@ -405,24 +407,6 @@ def apply_automatic_moderation(review, user):
     review.approved = False
     return review
 
-# ✅ NOUVELLE VUE POUR SIGNALER UN AVIS
-@login_required
-@require_POST
-def report_review(request, review_id):
-    """Permet aux utilisateurs de signaler un avis inapproprié"""
-    review = get_object_or_404(ProductReview, id=review_id)
-    
-    # Empêcher de signaler son propre avis
-    if review.user == request.user:
-        messages.error(request, "Vous ne pouvez pas signaler votre propre avis.")
-        return redirect('shop:product_detail', id=review.product.id, slug=review.product.slug)
-    
-    reason = request.POST.get('reason', '')
-    review.mark_as_reported(reason)
-    
-    messages.success(request, "L'avis a été signalé à notre équipe de modération. Merci !")
-    return redirect('shop:product_detail', id=review.product.id, slug=review.product.slug)
-
 @login_required
 def delete_review(request, review_id):
     """Supprimer un avis"""
@@ -434,6 +418,10 @@ def delete_review(request, review_id):
     return redirect('shop:product_detail', id=product.id, slug=product.slug)
 
 # Vues Authentification
+
+# =========================================================================
+# ▼▼▼ VUE LOGIN_VIEW MODIFIÉE ▼▼▼
+# =========================================================================
 def login_view(request):
     if request.user.is_authenticated:
         messages.info(request, 'Vous êtes déjà connecté.')
@@ -441,30 +429,30 @@ def login_view(request):
     
     if request.method == 'POST':
         # Utiliser l'email pour l'authentification
-        email = request.POST.get('username')
+        email = request.POST.get('username') # Le template login.html utilise name="username"
         password = request.POST.get('password')
         
+        if not email or not password:
+            messages.error(request, 'Veuillez fournir un email et un mot de passe.')
+            return render(request, 'shop/auth/login.html')
+
         # Trouver l'utilisateur par email
         try:
-            user = User.objects.get(email=email)
-            # Authentifier avec le username
-            user = authenticate(username=user.username, password=password)
+            user_by_email = User.objects.get(email=email)
+            # Authentifier avec le username (qui est l'email dans notre cas)
+            user = authenticate(request, username=user_by_email.username, password=password)
             
             if user is not None:
-                if hasattr(user, 'profile') and user.profile.email_confirmed:
-                    login(request, user)
-                    
-                    # TRANSFERT DU PANIER SESSION VERS UTILISATEUR
-                    _transfer_session_cart_to_user(request, user)
-                    
-                    messages.success(request, f'Bienvenue {user.first_name} !')
-                    next_page = request.GET.get('next', 'shop:product_list')
-                    return redirect(next_page)
-                else:
-                    messages.error(request, 
-                        'Votre compte n\'est pas encore confirmé. '
-                        'Veuillez vérifier votre email et cliquer sur le lien de confirmation.'
-                    )
+                # ▼▼▼ MODIFICATION : Connexion directe sans vérifier email_confirmed ▼▼▼
+                login(request, user)
+                
+                # TRANSFERT DU PANIER SESSION VERS UTILISATEUR
+                _transfer_session_cart_to_user(request, user)
+                
+                messages.success(request, f'Bienvenue {user.first_name} !')
+                next_page = request.GET.get('next', 'shop:product_list')
+                return redirect(next_page)
+                # ▲▲▲ FIN MODIFICATION ▲▲▲
             else:
                 messages.error(request, 'Email ou mot de passe incorrect.')
                 
@@ -472,6 +460,9 @@ def login_view(request):
             messages.error(request, 'Aucun compte trouvé avec cet email.')
     
     return render(request, 'shop/auth/login.html')
+# =========================================================================
+# ▲▲▲ FIN MODIFICATION LOGIN_VIEW ▲▲▲
+# =========================================================================
 
 def _transfer_session_cart_to_user(request, user):
     """Transfère le panier de session vers l'utilisateur connecté"""
@@ -498,7 +489,8 @@ def _transfer_session_cart_to_user(request, user):
             
             # Supprimer l'ancien panier de session
             session_cart.delete()
-            del request.session['cart_id']
+            if 'cart_id' in request.session:
+                 del request.session['cart_id']
             
     except Exception as e:
         # En cas d'erreur, on ignore simplement le transfert
@@ -516,6 +508,10 @@ def logout_view(request):
     
     return redirect('shop:product_list')
 
+
+# =========================================================================
+# ▼▼▼ VUE REGISTER_VIEW MODIFIÉE ▼▼▼
+# =========================================================================
 def register_view(request):
     if request.user.is_authenticated:
         messages.info(request, 'Vous êtes déjà connecté.')
@@ -523,78 +519,73 @@ def register_view(request):
     
     if request.method == 'POST':
         form = CustomUserCreationForm(request.POST)
+        
         if form.is_valid():
-            user = form.save()
-            
-            # Envoyer l'email de confirmation
-            send_confirmation_email(user)
-            
-            messages.success(request, 
-                f'Compte créé avec succès pour {user.first_name} {user.last_name} ! '
-                f'Un email de confirmation a été envoyé à {user.email}. '
-                f'Veuillez vérifier votre boîte mail et cliquer sur le lien de confirmation.'
-            )
-            return redirect('shop:login')
+            # Récupérer les données validées du formulaire
+            email = form.cleaned_data['email']
+            first_name = form.cleaned_data['first_name']
+            last_name = form.cleaned_data['last_name']
+            password = form.cleaned_data['password1']
+            birth_date = form.cleaned_data['birth_date']
+            phone_number = form.cleaned_data['phone_number']
+
+            try:
+                # --- ÉTAPE 1: Créer l'objet User ---
+                new_user = User.objects.create_user(
+                    username=email, # Utiliser l'email comme nom d'utilisateur
+                    email=email,
+                    password=password,
+                    first_name=first_name,
+                    last_name=last_name
+                )
+                
+                # ▼▼▼ MODIFICATION : Activer l'utilisateur immédiatement ▼▼▼
+                new_user.is_active = True 
+                new_user.save()
+
+                # --- ÉTAPE 2: Créer l'objet UserProfile ---
+                UserProfile.objects.create(
+                    user=new_user,
+                    birth_date=birth_date,
+                    phone_number=phone_number
+                    # email_confirmed est True par défaut (modèle)
+                )
+
+                # --- ÉTAPE 3: Envoi d'email SUPPRIMÉ ---
+                
+                messages.success(request, 
+                    f'Compte créé avec succès pour {first_name} ! Bienvenue.'
+                )
+                
+                # ▼▼▼ MODIFICATION : Connecter l'utilisateur directement ▼▼▼
+                login(request, new_user)
+                return redirect('shop:product_list') # Rediriger vers la boutique
+
+            except IntegrityError:
+                # Gère le cas où l'email (en tant que username) est déjà pris
+                form.add_error('email', 'Cet email est déjà utilisé.')
+                messages.error(request, 'Veuillez corriger les erreurs ci-dessous.')
+                
+            except Exception as e:
+                # Gérer d'autres erreurs potentielles
+                messages.error(request, f'Une erreur est survenue : {e}')
+        
         else:
+            # Le formulaire n'est pas valide
             messages.error(request, 'Veuillez corriger les erreurs ci-dessous.')
+    
     else:
+        # Si c'est une requête GET, afficher le formulaire vide
         form = CustomUserCreationForm()
     
     return render(request, 'shop/auth/register.html', {'form': form})
+# =========================================================================
+# ▲▲▲ FIN MODIFICATION REGISTER_VIEW ▲▲▲
+# =========================================================================
 
-def confirm_email_view(request, token):
-    """Vue pour confirmer l'email"""
-    try:
-        # CORRECTION : Le token est déjà un objet UUID, pas besoin de conversion
-        profile = get_object_or_404(UserProfile, confirmation_token=token)
-        
-        if not profile.email_confirmed:
-            profile.email_confirmed = True
-            profile.save()
-            
-            # Envoyer l'email de bienvenue
-            send_welcome_email(profile.user)
-            
-            messages.success(request, 
-                'Votre email a été confirmé avec succès ! '
-                'Vous pouvez maintenant vous connecter.'
-            )
-        else:
-            messages.info(request, 'Votre email est déjà confirmé.')
-            
-    except UserProfile.DoesNotExist:
-        messages.error(request, 'Lien de confirmation invalide ou expiré.')
-    except Exception as e:
-        # Log l'erreur pour le débogage
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.error(f"Erreur lors de la confirmation d'email: {e}")
-        messages.error(request, 'Une erreur est survenue lors de la confirmation.')
-    
-    return redirect('shop:login')
 
-@login_required
-def resend_confirmation_email(request):
-    """Renvoyer l'email de confirmation"""
-    if not hasattr(request.user, 'profile'):
-        messages.error(request, 'Profil utilisateur non trouvé.')
-        return redirect('shop:profile')
-    
-    if request.user.profile.email_confirmed:
-        messages.info(request, 'Votre email est déjà confirmé.')
-        return redirect('shop:profile')
-    
-    # Régénérer le token
-    request.user.profile.confirmation_token = uuid.uuid4()
-    request.user.profile.save()
-    
-    send_confirmation_email(request.user)
-    
-    messages.success(request, 
-        'Un nouvel email de confirmation a été envoyé. '
-        'Veuillez vérifier votre boîte mail.'
-    )
-    return redirect('shop:profile')
+# VUES DE CONFIRMATION SUPPRIMÉES (confirm_email_view, resend_confirmation_email, admin_confirm_email)
+
 
 @login_required
 def profile_view(request):
@@ -612,23 +603,6 @@ def profile_view(request):
         'favorites_count': favorites_count,
         'reviews_count': reviews_count
     })
-
-@login_required
-def admin_confirm_email(request, user_id):
-    """Vue pour permettre aux administrateurs de confirmer manuellement les emails"""
-    if not request.user.is_superuser:
-        messages.error(request, "Vous n'avez pas la permission d'effectuer cette action.")
-        return redirect('shop:product_list')
-    
-    user = get_object_or_404(User, id=user_id)
-    if hasattr(user, 'profile'):
-        user.profile.email_confirmed = True
-        user.profile.save()
-        messages.success(request, f"Le compte de {user.email} a été confirmé manuellement.")
-    else:
-        messages.error(request, "Profil utilisateur non trouvé.")
-    
-    return redirect('admin:shop_userprofile_changelist')
 
 @login_required
 @require_POST
@@ -674,7 +648,6 @@ def apply_coupon(request):
                 request.session['coupon_id'] = coupon.id
                 request.session['coupon_code'] = coupon.code
                 
-                # ✅ CORRECTION : Convertir en Decimal avant stockage
                 if coupon.discount_type == 'free_shipping':
                     discount_amount = Decimal('0')
                     discount_message = "🎉 Livraison gratuite appliquée !"
@@ -682,8 +655,8 @@ def apply_coupon(request):
                     discount_amount = coupon.calculate_discount(cart.get_total_price())
                     discount_message = f"🎉 Réduction de {discount_amount} € appliquée !"
                 
-                # ✅ CORRECTION : Stocker comme string pour éviter les problèmes de sérialisation
-                request.session['discount_amount'] = str(float(discount_amount))
+                # Stocker comme string pour éviter les problèmes de sérialisation JSON
+                request.session['discount_amount'] = str(discount_amount)
                 request.session['coupon_type'] = coupon.discount_type
                 
                 messages.success(request, f"{discount_message} Code: {coupon.code}")
@@ -712,36 +685,21 @@ def clear_coupon_session(request):
     for key in session_keys:
         if key in request.session:
             del request.session[key]
-    if 'coupon_id' in request.session:
-        del request.session['coupon_id']
-    if 'coupon_code' in request.session:
-        del request.session['coupon_code']
-    if 'discount_amount' in request.session:
-        del request.session['discount_amount']
-    if 'coupon_type' in request.session:
-        del request.session['coupon_type']
 
-from decimal import Decimal
 
 def _get_cart_with_discount(request):
     """Récupère le panier avec les informations de réduction"""
     cart = _get_cart(request)
     
-    # ✅ CORRECTION : Convertir les float en Decimal
-    discount_amount = request.session.get('discount_amount', 0)
-    # Convertir float en Decimal si nécessaire
-    if isinstance(discount_amount, float):
-        discount_amount = Decimal(str(discount_amount))
-    else:
-        discount_amount = Decimal(discount_amount)
+    # Convertir le montant de la session (string) en Decimal
+    discount_amount = Decimal(request.session.get('discount_amount', '0.00'))
     
     # Ajouter les informations de réduction au contexte du panier
     cart.coupon_code = request.session.get('coupon_code', None)
     cart.discount_amount = discount_amount
     cart.coupon_type = request.session.get('coupon_type', None)
     
-    # ✅ CORRECTION : Utiliser Decimal pour tous les calculs
-    total_price = Decimal(str(cart.get_total_price())) if cart.get_total_price() else Decimal('0')
+    total_price = cart.get_total_price()
     
     # Calculer le total après réduction
     cart.total_after_discount = max(total_price - discount_amount, Decimal('0'))

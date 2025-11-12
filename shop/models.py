@@ -147,7 +147,10 @@ class Coupon(models.Model):
 class Cart(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, null=True, blank=True)
     created = models.DateTimeField(auto_now_add=True)
-    updated = models.DateTimeField(auto_now=True)
+    
+    # ▼▼▼ CORRECTION ICI ▼▼▼
+    updated = models.DateTimeField(auto_now=True) # Remplacer auto_now_True par auto_now=True
+    # ▲▲▲ FIN CORRECTION ▲▲▲
     
     class Meta:
         ordering = ['-updated']
@@ -178,7 +181,7 @@ class CartItem(models.Model):
     price = models.DecimalField(
         max_digits=10,
         decimal_places=2,
-        default=Decimal('0.00')  # ← FIX : DEFAULT OBLIGATOIRE
+        default=Decimal('0.00')
     )
     
     class Meta:
@@ -246,7 +249,7 @@ class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     birth_date = models.DateField(null=True, blank=True)
     phone_number = models.CharField(max_length=15, blank=True)
-    email_confirmed = models.BooleanField(default=False)
+    email_confirmed = models.BooleanField(default=True) # C'est bien 'True' comme on l'a défini
     confirmation_token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
